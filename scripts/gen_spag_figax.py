@@ -40,8 +40,9 @@ def gen_spag_figax(ds,spag_descs,Qlabels=None,figwid=3.54*2,\
         ax.set_xticklabels([])
         ax.set_xlabel('')
         axlist.append(ax)
+        plt.grid(None)
         if i==0:
             ax.text((wid_ax_frac*0.5)*(1.0/ax_wids[0]),1.02,title,\
                 horizontalalignment='center',verticalalignment='bottom',transform=ax.transAxes)
-            ax.set_ylabel('$\hbar\omega$ (meV)')
+            ax.set_ylabel("$\hbar\omega$ (meV)")
     return fig,axlist

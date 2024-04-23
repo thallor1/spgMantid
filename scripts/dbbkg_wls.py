@@ -10,18 +10,18 @@ from reduce_data_to_MDE import *
 from slice_utils import *
 
 def dim2array(d,center=True):
-    """
-    Create a numpy array containing bin centers along the dimension d
-    input: d - IMDDimension
-    return: numpy array, from min+st/2 to max-st/2 with step st  
-    """
-    dmin=d.getMinimum()
-    dmax=d.getMaximum()
-    dstep=d.getX(1)-d.getX(0)
-    if center:
-        return np.arange(dmin+dstep/2,dmax,dstep)
-    else:
-        return np.linspace(dmin,dmax,d.getNBins()+1)
+	"""
+	Create a numpy array containing bin centers along the dimension d
+	input: d - IMDDimension
+	return: numpy array, from min+st/2 to max-st/2 with step st  
+	"""
+	dmin=d.getMinimum()
+	dmax=d.getMaximum()
+	dstep=d.getX(1)-d.getX(0)
+	if center:
+		return np.arange(dmin+dstep/2,dmax,dstep)
+	else:
+		return np.linspace(dmin,dmax,d.getNBins()+1)
 
 def pre(delta):
 	return (1.0-delta)/2.0
@@ -32,7 +32,7 @@ def detailedbalance_wls_QEpt(energy,Iplus,Iminus,Errplus,Errminus,temperatures,d
 	returns a temperature indepdnent background found by a weighted ordinary
 	least-squares approach. 
 
-    This is a helper function for the constant energy slice mode. 
+	This is a helper function for the constant energy slice mode. 
 	'''
 	#Outputs will be extracted background and SQW for all energies. 
 	bkg_I = 0
@@ -303,10 +303,10 @@ def detailedbalance_wls_singleQ(energies,cutmatrix,errmatrix,temperatures,delE=0
 	return bkg_I,bkg_Err,cutmatrix,errmatrix 
 
 
-def detailedBalance_MDslices_ConstE(slicenamesplus,slicenamesminus,temperatures,OutputSuffix='_DBBKG'):
+def detailedBalance_MDslices_ConstE(slicenamesplus,slicenamesminus,temperatures,OutputSuffix='_DBBKG',redo_slices=False):
 	'''
 	Provided a list of names of slices, iterates through every point in Q 
-	and calculates both a temperature independent background and SQW for each       temperature 
+	and calculates both a temperature independent background and SQW for each	   temperature 
 	'''
 	Imat_plus = [] #Will contain MDworkspaces for extracted SQW
 	Imat_minus = [] #Will contain MDworkspaces for extracted SQW
@@ -315,13 +315,27 @@ def detailedBalance_MDslices_ConstE(slicenamesplus,slicenamesminus,temperatures,
 
 	#Make copies of each slice for output. 
 	outmd_list = []
+	do_list = []
+	do_bkg = True
 	for name in slicenamesplus:
 		md = mtd[name]
-		mdout = CloneWorkspace(md,OutputWorkspace=name+'_SQW_calculated')
+		#Check if the workspace already exists:
+		if name+'_SQW_calculated' in mtd and redo_slices is False:
+			print(f"WARNING: Slice {name+'_SQW_calculated'} exists. Use the redo_slices option to overwrite")
+			mdout = mtd[name+'_SQW_calculated']
+			do_list.append(False)
+		else:
+			mdout = CloneWorkspace(md,OutputWorkspace=name+'_SQW_calculated')
+			do_list.append(True)
 		outmd_list.append(mdout)
-	bkgout = CloneWorkspace(md,OutputWorkspace=name+'_DBBKG_calculated')
+	if name+'_DBBKG_calculated' in mtd and redo_slices is False:
+		print(f"WARNING: Slice {name+'_DBBKG_calculated'} exists. Use the redo_slices option to overwrite")
+		bkgout = mtd[name+'_DBBKG_calculated']
+		do_bkg=False
+	else:
+		bkgout = CloneWorkspace(md,OutputWorkspace=name+'_DBBKG_calculated')
 	for i,t in enumerate(temperatures):
-	    #Get the MDworkspace for each slice.
+		#Get the MDworkspace for each slice.
 		slice_name_plus=slicenamesplus[i]
 		slice_name_minus = slicenamesminus[i]
 
@@ -350,50 +364,56 @@ def detailedBalance_MDslices_ConstE(slicenamesplus,slicenamesminus,temperatures,
 		Errmat_plus.append(I)
 		Imat_minus.append(Iminus)
 		Errmat_minus.append(Errminus)
-    
-	bkgI = np.zeros(np.shape(I))
-	bkgErr = np.zeros(np.shape(bkgI))
-	Smat = np.zeros(np.shape(Imat_plus))
-	Serrmat = np.zeros(np.shape(Imat_plus))
-	for i in range(len(qx)):
-		for j in range(len(qy)):		
-			itest = i
-			jtest = j
-			Imat_plus = np.array(Imat_plus)
-			Imat_minus = np.array(Imat_minus)
-			Errmat_plus = np.array(Errmat_plus)
-			Errmat_minus = np.array(Errmat_minus)
-			bkg_I, bkg_err, S_list, S_err_list = detailedbalance_wls_QEpt(energy_plus,Imat_plus[:,itest,jtest],Imat_minus[:,itest,jtest],
-				Errmat_plus[:,itest,jtest],Errmat_minus[:,itest,jtest],temperatures,delE=-0.1)
-			bkgI[i,j]=bkg_I
-			bkgErr[i,j]=bkg_err
-			Smat[:,i,j]=S_list
-			Serrmat[:,i,j]=S_err_list
-	#Finally, assign intensities to the respective output workspaces.
-    
-	for ii,name in enumerate(slicenamesplus):
-		md = mtd[name+'_SQW_calculated']
-		Orig_I = np.copy(md.getSignalArray())
-		Orig_Err = np.copy(md.getErrorSquaredArray())
-		Orig_I[:,:,0,0]=Smat[ii]
-		Orig_Err[:,:,0,0]=Serrmat[ii]
-		md.setSignalArray(Orig_I)
-		md.setErrorSquaredArray(Orig_Err**2)
-	#Also the background workspace
-	md = mtd[name+'_DBBKG_calculated']
-	origbkg_I = np.copy(md.getSignalArray())
-	origbkg_Err = np.sqrt(np.copy(md.getErrorSquaredArray()))
-	origbkg_I[:,:,0,0]=bkgI
-	origbkg_Err[:,:,0,0]=bkgErr
-	md.setSignalArray(origbkg_I)
-	md.setErrorSquaredArray(origbkg_Err**2)
+	if True in do_list or do_bkg is True:
+		bkgI = np.zeros(np.shape(I))
+		bkgErr = np.zeros(np.shape(bkgI))
+		Smat = np.zeros(np.shape(Imat_plus))
+		Serrmat = np.zeros(np.shape(Imat_plus))
+		totnum = len(qx)*len(qy)
+		for i in range(len(qx)):
+			print(f"Dbfunc on {i*len(qy)}/{totnum}")
+			for j in range(len(qy)):		
+				itest = i
+				jtest = j
+				Imat_plus = np.array(Imat_plus)
+				Imat_minus = np.array(Imat_minus)
+				Errmat_plus = np.array(Errmat_plus)
+				Errmat_minus = np.array(Errmat_minus)
+				bkg_I, bkg_err, S_list, S_err_list = detailedbalance_wls_QEpt(energy_plus,Imat_plus[:,itest,jtest],Imat_minus[:,itest,jtest],
+					Errmat_plus[:,itest,jtest],Errmat_minus[:,itest,jtest],temperatures,delE=-0.1)
+				bkgI[i,j]=bkg_I
+				bkgErr[i,j]=bkg_err
+				Smat[:,i,j]=S_list
+				Serrmat[:,i,j]=S_err_list
+		#Finally, assign intensities to the respective output workspaces.
+		
+		for ii,name in enumerate(slicenamesplus):
+			md = mtd[name+'_SQW_calculated']
+			Orig_I = np.copy(md.getSignalArray())
+			Orig_Err = np.copy(md.getErrorSquaredArray())
+			Orig_I[:,:,0,0]=Smat[ii]
+			Orig_Err[:,:,0,0]=Serrmat[ii]
+			md.setSignalArray(Orig_I)
+			md.setErrorSquaredArray(Orig_Err**2)
+		#Also the background workspace
+		md = mtd[name+'_DBBKG_calculated']
+		origbkg_I = np.copy(md.getSignalArray())
+		origbkg_Err = np.sqrt(np.copy(md.getErrorSquaredArray()))
+		origbkg_I[:,:,0,0]=bkgI
+		origbkg_Err[:,:,0,0]=bkgErr
+		md.setSignalArray(origbkg_I)
+		md.setErrorSquaredArray(origbkg_Err**2)
 
-	#Return the md list and the background MD
-	bkgmd = mtd[name+'_DBBKG_calculated']
+		#Return the md list and the background MD
+		bkgmd = mtd[name+'_DBBKG_calculated']
+	else:
+		#Reuse results in mantidworkspace manager
+		bkgmd = mtd[name+'_DBBKG_calculated']
+		
 
 	return outmd_list, bkgmd
 
-def detailedBalance_MDSlices(slicenames,temperatures,OutputSuffix='_DBBKG',delE=0.0):
+def detailedBalance_MDSlices(slicenames,temperatures,OutputSuffix='_DBBKG',delE=0.0,redo_DB=False):
 	'''
 	Provided a list of names of slices, iterates through every point in Q 
 	and calculates both a temperature independent background and SQW for each temperature 
@@ -421,46 +441,62 @@ def detailedBalance_MDSlices(slicenames,temperatures,OutputSuffix='_DBBKG',delE=
 		Earr_list.append(Earr)
 	#Make copies of each for output. 
 	outmd_list = []
+	do_DB = False # Overwrite older db calculations
+	if redo_DB is True:
+		do_DB = True
+	do_list = []
 	for name in slicenames:
 		md = mtd[name]
-		mdout = CloneWorkspace(md,OutputWorkspace=name+'_SQW_calculated')
+		if name+"_SQW_calculated" not in mtd or redo_DB is True:
+			mdout = CloneWorkspace(md,OutputWorkspace=name+'_SQW_calculated')
+			do_DB = True
+		else:
+			mdout = mtd[name+"_SQW_calculated"]
 		outmd_list.append(mdout)
-	bkgout = CloneWorkspace(md0,OutputWorkspace=name+'_DBBKG_calculated')
-	#Iterate through the Q-dimension to generate the input to the main function
-	for ii,Qarr in enumerate(Qarr_list):
-		e = Earr_list[ii]
-		for i,q in enumerate(Qarr):
-			ecutmatrix = np.zeros((len(temperatures),len(e)))
-			errcutmatrix = np.zeros(np.shape(ecutmatrix))
-			for j,name in enumerate(slicenames):
-				md = mtd[name]
-				I = np.copy(md.getSignalArray())
-				Err = np.sqrt(np.copy(md.getErrorSquaredArray()))
-				ecut = I[i,0,0,:]
-				errcut = Err[i,0,0,:]
-				ecutmatrix[j,:]=ecut 
-				errcutmatrix[j,:]=errcut 
-			#Now calculate the background, sqw's. 
-			bkg_I,bkg_Err,sqwmatrix,errmatrix = detailedbalance_wls_singleQ(e,ecutmatrix,errcutmatrix,temperatures,delE=delE)
-			#Edit the output MDworkspaces 
-			for ii,name in enumerate(slicenames):
-				md = mtd[name+'_SQW_calculated']
-				Isqw = np.copy(md.getSignalArray())
-				Errsqw = np.sqrt(np.copy(md.getErrorSquaredArray()))
+	if name+"_DBBKG_calculated" not in mtd or redo_DB is True:
+		bkgout = CloneWorkspace(md0,OutputWorkspace=name+'_DBBKG_calculated')
+		do_DB = True 
+	else:
+		bkgout = mtd[name+"_DBBKG_calculated"]
+	if do_DB is False:
+		return outmd_list, bkgout
+	else:
+		#Iterate through the Q-dimension to generate the input to the main function
+		for ii,Qarr in enumerate(Qarr_list):
+			print(f"DBfunc on {ii}/{len(Qarr_list)}")
+			e = Earr_list[ii]
+			for i,q in enumerate(Qarr):
+				ecutmatrix = np.zeros((len(temperatures),len(e)))
+				errcutmatrix = np.zeros(np.shape(ecutmatrix))
+				for j,name in enumerate(slicenames):
+					md = mtd[name]
+					I = np.copy(md.getSignalArray())
+					Err = np.sqrt(np.copy(md.getErrorSquaredArray()))
+					ecut = I[i,0,0,:]
+					errcut = Err[i,0,0,:]
+					ecutmatrix[j,:]=ecut 
+					errcutmatrix[j,:]=errcut 
+				#Now calculate the background, sqw's. 
+				bkg_I,bkg_Err,sqwmatrix,errmatrix = detailedbalance_wls_singleQ(e,ecutmatrix,errcutmatrix,temperatures,delE=delE)
+				#Edit the output MDworkspaces 
+				for j,name in enumerate(slicenames):
+					md = mtd[name+'_SQW_calculated']
+					Isqw = np.copy(md.getSignalArray())
+					Errsqw = np.sqrt(np.copy(md.getErrorSquaredArray()))
 
-				Isqw[i,0,0,:]=sqwmatrix[ii,:]
-				Errsqw[i,0,0,:]=errmatrix[ii,:] 
-				md.setSignalArray(Isqw)
-				md.setErrorSquaredArray(Errsqw**2)
-			#Also the background workspace
-			md = mtd[name+'_DBBKG_calculated']
-			Ibkg= np.copy(md.getSignalArray())
-			Errbkg = np.sqrt(np.copy(md.getErrorSquaredArray()))
-			Ibkg[i,:]=bkg_I
-			Errbkg[i,:]=bkg_Err
-			md.setSignalArray(Ibkg)
-			md.setErrorSquaredArray(Errbkg**2)
+					Isqw[i,0,0,:]=sqwmatrix[j,:]
+					Errsqw[i,0,0,:]=errmatrix[j,:] 
+					md.setSignalArray(Isqw)
+					md.setErrorSquaredArray(Errsqw**2)
+				#Also the background workspace
+				md = mtd[name+'_DBBKG_calculated']
+				Ibkg= np.copy(md.getSignalArray())
+				Errbkg = np.sqrt(np.copy(md.getErrorSquaredArray()))
+				Ibkg[i,:]=bkg_I
+				Errbkg[i,:]=bkg_Err
+				md.setSignalArray(Ibkg)
+				md.setErrorSquaredArray(Errbkg**2)
 
-		#Return the md list and the background MD
-		bkgmd = mtd[name+'_DBBKG_calculated']
+			#Return the md list and the background MD
+			bkgmd = mtd[name+'_DBBKG_calculated']
 	return outmd_list, bkgmd 

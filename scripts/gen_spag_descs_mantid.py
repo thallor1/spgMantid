@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def gen_spag_descs_mantid(a,b,c,alpha,beta,gamma,HKLpts,dQ0,dQ1,dQ2,Emin,Emax,dE,vmin,vmax,cmap,extra='',SymOps=None):
+def gen_spag_descs_mantid(a,b,c,alpha,beta,gamma,HKLpts,dQ0,dQ1,dQ2,Emin,Emax,dE,vmin,vmax,cmap,extra='',SymOps=None,norm_Q =[0,0,1],integrate_E=False):
     '''
     Function to generate dispersion plots (spaghetti plots) using Andrei's MANTID format
     Should work for any arbitrary lattice, but one limitation is that the paths must be orthogonal.
@@ -19,7 +19,7 @@ def gen_spag_descs_mantid(a,b,c,alpha,beta,gamma,HKLpts,dQ0,dQ1,dQ2,Emin,Emax,dE
     -cmap: Colormap string
     -extra: String to add to description.
     -SymOps: Symmetry operations to apply before taking slices, in MANTID notation.
-
+    -norm_Q: Default normal vector for scattering plane if the normal vector can't be found.
     Returns :
         A list of descriptions that fits into the "define_slices" function like so:
 
@@ -85,6 +85,7 @@ def gen_spag_descs_mantid(a,b,c,alpha,beta,gamma,HKLpts,dQ0,dQ1,dQ2,Emin,Emax,dE
     Qdim1_list = []
     Qdim2_list = []
     Qmid_list = []
+    
     for i in range(len(HKLvecs)):
         #Assume that Qdim2 is the cross product of an adjacent path and the current one.
         if i<len(HKLvecs)-1:
@@ -95,17 +96,21 @@ def gen_spag_descs_mantid(a,b,c,alpha,beta,gamma,HKLpts,dQ0,dQ1,dQ2,Emin,Emax,dE
             #If at final path, simply use the previous path instead.
             currpath = HKLvecs[i]
             nextpath = HKLvecs[i-1]
-        delQ = currpath[0]*astar+currpath[1]*bstar
+        delQ = currpath[0]*astar+currpath[1]*bstar+currpath[2]*cstar
         delQ_norm = delQ/np.linalg.norm(delQ)
 
-        delQ_next= nextpath[0]*astar+nextpath[1]*bstar
+        delQ_next= nextpath[0]*astar+nextpath[1]*bstar+nextpath[2]*cstar
         perpdir2 = np.cross(delQ,delQ_next) #Generally the (00L) direction for 2D BZs
         hkl = HKLpts[i]
         q = Qpt_list[i]
         Q0 = Qpt_list[i]
         perpdir2=perpdir2#/np.linalg.norm(perpdir2) #Qdimension2
+        if np.linalg.norm(perpdir2)<1e-4:
+            #Coplanar point input, default to the input vector. 
+            perpdir2 = np.array(norm_Q)
         orig_dir = currpath#/np.linalg.norm(currpath)
         perpdir1=np.cross(perpdir2,delQ)
+
         perpdir1=perpdir1#/np.linalg.norm(perpdir1) #Qdimension1
         #Now show the physical width of integration instead
         perpdir1_window = perpdir1*dQ1
@@ -189,7 +194,11 @@ def gen_spag_descs_mantid(a,b,c,alpha,beta,gamma,HKLpts,dQ0,dQ1,dQ2,Emin,Emax,dE
         Qdimension1_binstrs.append(f"{Qdim1_min:.3f},{Qdim1_max:.3f}")#Integrated
         Qdimension2_binstrs.append(f"{Qdim2_min:.3f},{Qdim2_max:.3f}")#integrated
         #Now also prepare the energy str
-        energy_binstrs.append(f"{Emin:.4f},{dE:.4f},{Emax:.4f}")
+        if integrate_E is False:
+            energy_binstrs.append(f"{Emin:.4f},{dE:.4f},{Emax:.4f}")
+        else:
+            #User desires a cut binned in energy along this path rather than slice.
+            energy_binstrs.append(f"{Emin:.4f},{Emax:.2f}")
 
     #Now we can finally build the description objects
     out_dsl = []
